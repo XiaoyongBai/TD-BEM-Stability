@@ -14,7 +14,7 @@
 #include "slepcsys.h"
 #include "cmath"
 #include "petscmat.h"
-
+#include "petscksp.h"
 
 using namespace Stability;
 using namespace std;
@@ -35,6 +35,33 @@ EigenAnalysisT::EigenAnalysisT()
     fa3=1-fa1-fa2;
     
     MPI_Comm_rank(PETSC_COMM_WORLD, &fRank );
+    
+    
+    //test inverse
+    Mat AA;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, 3, 3, PETSC_NULL, &AA);
+    MatZeroEntries(AA);
+    MatSetValue(AA, 0, 1, 1, INSERT_VALUES);
+    MatSetValue(AA, 1, 0, 3, INSERT_VALUES);
+    MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
+    MatShift(AA, 2.0);
+    MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
+    
+    cout <<">>>>>>>>>>>"<<endl;
+    MatView(AA, PETSC_VIEWER_STDOUT_WORLD);
+    
+    Mat BB;
+    MatConvert(AA, MATSAME, MAT_INITIAL_MATRIX, &BB);
+    InverseMPI(AA, BB);
+
+    
+    cout <<">>>>>>>>>>>"<<endl;
+    MatView(BB, PETSC_VIEWER_STDOUT_WORLD);
+    
+    MatDestroy(&AA);
+    MatDestroy(&BB);
 }
 
 
@@ -537,7 +564,87 @@ double EigenAnalysisT::LargestEigen_Ave()
     
     EPSDestroy(&eps);
     
-    
-    
     return lambda;
 }
+
+
+void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
+{
+    int m, n;
+    MatGetSize(A, &m, &n);
+    
+    if (m != n) {
+        throw "!!!!! EignAnalysisT::Inverse, the matrix must be squre";
+    }
+        
+    KSP ksp;
+    KSPCreate(PETSC_COMM_WORLD, &ksp);
+    KSPSetOperators(ksp, A, A);
+    
+    Vec I; //A column in indentity matrix
+    Vec X;
+    
+    VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m, &I);
+    VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m, &X);
+    
+    int p,q;
+    VecGetOwnershipRange(X, &p, &q);
+    
+    int* row_position=new int[q-p];
+    for (int a=0; a<q-p; a++) {
+        row_position[a]=p+a;
+    }
+    
+    double* X_local;
+    
+    for (int i=0; i<m; i++) {
+        VecZeroEntries(I);
+        VecSetValue(I, i, 1, INSERT_VALUES);
+        VecAssemblyBegin(I);
+        VecAssemblyEnd(I);
+        
+        KSPSolve(ksp, I, X);
+
+        //cout<<"I is"<<endl;
+        //VecView(I, PETSC_VIEWER_STDOUT_WORLD);
+        //cout<<"X is"<<endl;
+        //VecView(X, PETSC_VIEWER_STDOUT_WORLD);
+        
+        VecGetArray(X, &X_local);
+        
+        MatSetValues(A_Inv, q-p, row_position, 1, &i, X_local, INSERT_VALUES);
+
+        
+        MatAssemblyBegin(A_Inv, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(A_Inv, MAT_FINAL_ASSEMBLY);
+        
+        VecRestoreArray(X, &X_local);
+    }
+    
+    VecDestroy(&I);
+    VecDestroy(&X);
+    KSPDestroy(&ksp);
+    
+    delete [] row_position;
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

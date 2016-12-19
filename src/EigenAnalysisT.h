@@ -38,6 +38,9 @@ public:
     double LargestEigen_Ave(void);
 
     
+    //Compute the Inverse of a matrix
+    void InverseMPI(Mat A, Mat& A_Inv);
+    
 private:
     int fNumMatrix; //Number of matrices to be used for stability analysis.
     int fNumRow; //Number of rows in each matrix

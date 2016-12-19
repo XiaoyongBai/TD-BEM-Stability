@@ -12,8 +12,6 @@
 using namespace std;
 using namespace Stability;
 
-void TestInvsere();
-
 int main( int argc, char **argv )
 {
     char help[] = "Eigenvalue analysis of BEM matrix, usingSLEPc\n";
@@ -24,10 +22,7 @@ int main( int argc, char **argv )
     
     PetscErrorCode ierr;
     try {
-        
-        //TestInvsere();
-        //return 0;
-        
+               
         //read matrices
         GHReaderT reader;
         reader.ReadMatrixNumber();
@@ -62,9 +57,7 @@ int main( int argc, char **argv )
         double bb=EA.LargestEigen_Ave();
         
         cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;
-        
-
-        
+                
         ofstream write_eig;
         
         if ( rank==0 ) {
@@ -104,94 +97,4 @@ int main( int argc, char **argv )
     
     ierr = SlepcFinalize();
     return 1;
-}
-
-
-
-
-void TestInvsere()
-{
-    //test outputASCII
-    int rank;
-    MPI_Comm_rank(PETSC_COMM_WORLD, &rank );
-    
-    cout <<"rank is" << rank <<endl;
-    
-    Mat AA_global;
-    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, 5, 5, PETSC_NULL, &AA_global);
-    
-    if (rank==0) {
-        Mat AA;
-        PetscViewer fd;
-        MatCreateSeqDense(PETSC_COMM_SELF, 5, 5, PETSC_NULL, &AA);
-        
-        MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
-        MatShift(AA, 2.0);
-        MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
-        
-        //MatView(AA, PETSC_VIEWER_STDOUT_SELF);
-
-        //Generate an Identity matrix.
-        Mat I_Matrix;
-        MatCreateSeqDense(PETSC_COMM_SELF,5,5,PETSC_NULL, &I_Matrix);
-        MatZeroEntries(I_Matrix);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatShift(I_Matrix, -1.0);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
-        
-        //MatView(I_Matrix, PETSC_VIEWER_STDOUT_SELF);
-        
-        //Compute inverse of AA.
-        Mat AA_Inv;
-        MatCreateSeqDense(PETSC_COMM_SELF, 5, 5, PETSC_NULL, &AA_Inv);
-        MatAssemblyBegin(AA_Inv, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(AA_Inv, MAT_FINAL_ASSEMBLY);
-        
-        MatLUFactor(AA,0,0,0);
-        MatMatSolve(AA, I_Matrix, AA_Inv);
-        
-        MatView(AA_Inv, PETSC_VIEWER_STDOUT_SELF);
-        
-        
-        double* vec=new double[25];
-        int* column=new int[5];
-        for (int i=0; i<5; i++) {
-            column[i]=i;
-        }
-        MatGetValues(AA_Inv,5,column,5,column, vec);
-        
-        MatSetValues(AA_global, 5, column, 5, column, vec, INSERT_VALUES);
-        
-    }
-    
-    MatAssemblyBegin(AA_global, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(AA_global, MAT_FINAL_ASSEMBLY);
-    
-    cout <<">>>>>>>>>>>"<<endl;
-    MatView(AA_global, PETSC_VIEWER_STDOUT_WORLD);
-
-    Mat B;
-    
-    MatMatMult(AA_global, AA_global, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &B);
-    cout <<"<<<<<<<<<<<<<"<<endl;
-
-     MatView(B, PETSC_VIEWER_STDOUT_WORLD);
-
-    MPI_Barrier(PETSC_COMM_WORLD);
-    
-    /*MatZeroEntries(AA);
-    MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
-    PetscViewerASCIIOpen(PETSC_COMM_WORLD,"matrix.txt",&fd);
-    MatView(AA, fd);
-    PetscViewerDestroy(&fd);
-    MatDestroy(&AA);*/
-    
-
-
-    
 }
