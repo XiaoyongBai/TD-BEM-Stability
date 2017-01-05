@@ -443,18 +443,6 @@ void GHReaderT::ExchangeColumn_GH()
     }
     
     
-    if (rank==0) {
-        cout <<"\n"<<"Matrix H is"<<endl;
-        
-        for (int i=0; i<totoal_num_row; i++) {
-            for (int j=0; j<fNumRow; j++) {
-                cout <<setw(5) << fH[i*fNumRow+j] << " ";
-            }
-            cout<<endl;
-        }
-    }
-    
-    
     delete [] ubc; ubc=NULL;
     delete [] fG;  fG=NULL;
 }

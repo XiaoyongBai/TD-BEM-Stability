@@ -128,6 +128,7 @@ void EigenAnalysisT::SetMatrixSystem_Direct(double* H)
     Mat H0_Inv;
     MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
     InverseMPI(H0, H0_Inv);
+    MatScale(H0_Inv, -1);
     
     //cout <<">>>>>>>>>>>"<<endl;
     //cout <<"H0 is"<<endl;
@@ -211,16 +212,16 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     //Compute inverse of H0.
     Mat H0_Inv;
     MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
-    
     InverseMPI(H0, H0_Inv);
+    MatScale(H0_Inv, -1);
     
-    cout <<">>>>>>>>>>>"<<endl;
-    cout <<"H0 is"<<endl;
-    MatView(H0, PETSC_VIEWER_STDOUT_WORLD);
+    //cout <<">>>>>>>>>>>"<<endl;
+    //cout <<"H0 is"<<endl;
+    //MatView(H0, PETSC_VIEWER_STDOUT_WORLD);
     
-    cout <<">>>>>>>>>>>"<<endl;
-    cout <<"Inverse of H0 is"<<endl;
-    MatView(H0_Inv, PETSC_VIEWER_STDOUT_WORLD);
+    //cout <<">>>>>>>>>>>"<<endl;
+    //cout <<"Inverse of H0 is"<<endl;
+    //MatView(H0_Inv, PETSC_VIEWER_STDOUT_WORLD);
         
     //Form H matrices for averaging method
     MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+0*single_size, INSERT_VALUES);
@@ -366,8 +367,8 @@ void EigenAnalysisT::FormA_Direct()
     delete [] column_global;
     delete [] vec;
     
-    cout <<"fA_Direct is"<<endl;
-    MatView(fA_Direct,PETSC_VIEWER_STDOUT_WORLD);
+    //cout <<"fA_Direct is"<<endl;
+    //MatView(fA_Direct,PETSC_VIEWER_STDOUT_WORLD);
 }
 
 
