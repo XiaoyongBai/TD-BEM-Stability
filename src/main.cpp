@@ -42,24 +42,24 @@ int main( int argc, char **argv )
         double* H;
         reader.GetH(&H);
         
-        //EigenAnalysisT EA;
-        //EA.SetMatrixNumSize(num_matrix, num_row);
+        EigenAnalysisT EA;
+        EA.SetMatrixNumSize(num_matrix, num_row);
         
-        //EA.SetMatrixSystem_Direct(H);
+        EA.SetMatrixSystem_Direct(H);
         
-        /*
+        
         double aa = EA.LargestEigen_Direct();
         cout << "\n the largest eigenvalue of A for direct stepping=" << aa <<endl;
 
-        double A1=0.25;
-        double A2=0.25;
+        double A1=0.0;
+        double A2=0.0;
         EA.SetMatrixSystem_Ave(H, A1, A2);
         
         double bb=EA.LargestEigen_Ave();
         
         cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;
                 
-        ofstream write_eig;
+        /*ofstream write_eig;
         
         if ( rank==0 ) {
             write_eig.open("eig.txt",ios_base::out);

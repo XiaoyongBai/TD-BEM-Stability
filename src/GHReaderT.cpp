@@ -442,7 +442,7 @@ void GHReaderT::ExchangeColumn_GH()
         }
     }
     
-    /*
+    
     if (rank==0) {
         cout <<"\n"<<"Matrix H is"<<endl;
         
@@ -452,15 +452,7 @@ void GHReaderT::ExchangeColumn_GH()
             }
             cout<<endl;
         }
-        
-        cout <<"\n"<<"Matrix G is"<<endl;
-        for (int i=0; i<totoal_num_row; i++) {
-            for (int j=0; j<fNumRow; j++) {
-                cout <<setw(5) << fG[i*fNumRow+j] << " ";
-            }
-            cout<<endl;
-        }
-    }*/
+    }
     
     
     delete [] ubc; ubc=NULL;

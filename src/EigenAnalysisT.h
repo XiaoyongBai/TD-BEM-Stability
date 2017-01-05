@@ -41,6 +41,9 @@ public:
     //Compute the Inverse of a matrix
     void InverseMPI(Mat A, Mat& A_Inv);
     
+    //C=A*B
+    void DenseMatMult(Mat A, Mat B, Mat& C);
+    
 private:
     int fNumMatrix; //Number of matrices to be used for stability analysis.
     int fNumRow; //Number of rows in each matrix

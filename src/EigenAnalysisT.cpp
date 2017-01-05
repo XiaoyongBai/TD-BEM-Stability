@@ -38,7 +38,7 @@ EigenAnalysisT::EigenAnalysisT()
     
     
     //test inverse
-    Mat AA;
+    /*Mat AA;
     MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, 3, 3, PETSC_NULL, &AA);
     MatZeroEntries(AA);
     MatSetValue(AA, 0, 1, 1, INSERT_VALUES);
@@ -61,7 +61,7 @@ EigenAnalysisT::EigenAnalysisT()
     MatView(BB, PETSC_VIEWER_STDOUT_WORLD);
     
     MatDestroy(&AA);
-    MatDestroy(&BB);
+    MatDestroy(&BB);*/
 }
 
 
@@ -83,7 +83,6 @@ void EigenAnalysisT::SetMatrixNumSize(int num, int size)
     fNumMatrix=num;
     fNumRow=size;
     
-        
     //Allocate matrices
     fH_Direct=new Mat[fNumMatrix];
         
@@ -98,85 +97,74 @@ void EigenAnalysisT::SetMatrixNumSize(int num, int size)
     
     MatGetOwnershipRange(fH_Direct[0], &fHFirst, &fHLast);
     fHLast -= 1;
-    
 }
 
 
 void EigenAnalysisT::SetMatrixSystem_Direct(double* H)
 {
+    int loc_num_row=fHLast-fHFirst+1;
+    int single_size=loc_num_row*fNumRow;
     
-    if (fRank==0) {
-        //Generate an Identity matrix.
-        Mat I_Matrix;
-        MatCreateSeqDense(PETSC_COMM_SELF,fNumRow,fNumRow,PETSC_NULL, &I_Matrix);
-        MatZeroEntries(I_Matrix);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
-        
-        MatShift(I_Matrix, -1.0);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
-        
-        //Extract H0, i.e., the first matrix in H1
-        Mat H0;
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H0);
-        
-        int* row;
-        row=new int[fNumRow];
-        for (int ri=0; ri<fNumRow; ri++) {
-            row[ri]=ri;
-        }
-        
-        MatSetValues(H0, fNumRow, row, fNumRow, row, H, INSERT_VALUES);
-        MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
-        
-        //Compute inverse of H0.
-        Mat H0_Inv;
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
-        MatLUFactor(H0,0,0,0);
-        MatMatSolve(H0, I_Matrix, H0_Inv);
-        
-        double* vec=new double[fNumRow*fNumRow];
-        int* column=new int[fNumRow];
-        for (int i=0; i<fNumRow; i++) {
-            column[i]=i;
-        }
-        
-        Mat H_temp, H_temp_2;
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H_temp);
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H_temp_2);
-
-        
-        for (int i=0; i<fNumMatrix; i++) {
-            MatSetValues(H_temp, fNumRow, column, fNumRow, column, H+(i+1)*fNumRow*fNumRow, INSERT_VALUES);
-            MatAssemblyBegin(H_temp, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(H_temp, MAT_FINAL_ASSEMBLY);
-            
-            MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_2);
-            
-            MatGetValues(H_temp_2,fNumRow,column,fNumRow,column, vec);
-            MatSetValues(fH_Direct[i], fNumRow, column, fNumRow, column, vec, INSERT_VALUES);
-        }
-        
-        delete [] vec;
-        delete [] row;
-        delete [] column;
-        
-        MatDestroy(&I_Matrix);
-        MatDestroy(&H0);
-        MatDestroy(&H0_Inv);
-        MatDestroy(&H_temp);
-        MatDestroy(&H_temp_2);
+    int *row_index, *column_index;
+    row_index=new int[loc_num_row];
+    column_index=new int[fNumRow];
+    
+    for (int ri=0; ri<loc_num_row; ri++) {
+        row_index[ri]=fHFirst+ri;
     }
-
+    for (int ci=0; ci<fNumRow; ci++) {
+        column_index[ci]=ci;
+    }
     
+    //Extract H0, i.e., the first matrix in H1
+    Mat H0;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0);
+    
+    MatSetValues(H0, loc_num_row, row_index, fNumRow, column_index, H, INSERT_VALUES);
+    MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
+        
+    //Compute inverse of H0.
+    Mat H0_Inv;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
+    InverseMPI(H0, H0_Inv);
+    
+    //cout <<">>>>>>>>>>>"<<endl;
+    //cout <<"H0 is"<<endl;
+    //MatView(H0, PETSC_VIEWER_STDOUT_WORLD);
+    
+    //cout <<">>>>>>>>>>>"<<endl;
+    //cout <<"Inverse of H0 is"<<endl;
+    //MatView(H0_Inv, PETSC_VIEWER_STDOUT_WORLD);
+    
+    Mat H_temp;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H_temp);
+
+    Mat H_temp_1;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H_temp_1);
+    MatZeroEntries(H_temp_1);
     
     for (int i=0; i<fNumMatrix; i++) {
-        MatAssemblyBegin(fH_Direct[i], MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(fH_Direct[i], MAT_FINAL_ASSEMBLY);
+        MatSetValues(H_temp, loc_num_row, row_index, fNumRow, column_index, H+(i+1)*single_size, INSERT_VALUES);
+        MatAssemblyBegin(H_temp, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(H_temp, MAT_FINAL_ASSEMBLY);
+        
+        //cout <<"H_temp " << i << " is "<<endl;
+        //MatView(H_temp, PETSC_VIEWER_STDOUT_WORLD);
+        
+        DenseMatMult(H0_Inv, H_temp, fH_Direct[i]);
+        
+        //MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_1);
+        //cout <<"H_Direct " << i << " is "<<endl;
+        //MatView(fH_Direct[i], PETSC_VIEWER_STDOUT_WORLD);
     }
     
+    delete [] column_index;
+    delete [] row_index;
+    
+    MatDestroy(&H0);
+    MatDestroy(&H0_Inv);
+    MatDestroy(&H_temp);
 }
 
 
@@ -187,160 +175,122 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     fa2=a2;
     fa3=1.0-fa1-fa2;
     
-    int Hsize=fNumRow*fNumRow;
+    int loc_num_row=fHLast-fHFirst+1;
+    int single_size=loc_num_row*fNumRow;
     
-    if (fRank==0) {
-        //Generate an Identity matrix.
-        Mat I_Matrix;
-        MatCreateSeqDense(PETSC_COMM_SELF,fNumRow,fNumRow,PETSC_NULL, &I_Matrix);
-        MatZeroEntries(I_Matrix);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
+    int *row_index, *column_index;
+    row_index=new int[loc_num_row];
+    column_index=new int[fNumRow];
+    
+    for (int ri=0; ri<loc_num_row; ri++) {
+        row_index[ri]=fHFirst+ri;
+    }
+    for (int ci=0; ci<fNumRow; ci++) {
+        column_index[ci]=ci;
+    }
+    
+    //Generate H0 and its inverse
+    Mat H0, H_temp_1, H_temp_2, H_temp_3;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0);
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H_temp_1);
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H_temp_2);
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H_temp_3);
+    
+    
+    MatSetValues(H0, loc_num_row, row_index, fNumRow, column_index, H, INSERT_VALUES);
+    MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
+    MatScale(H0, 2.0*fa1+fa3);
+    
+    MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+single_size, INSERT_VALUES);
+    MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
+    
+    MatAXPY(H0, fa1, H_temp_1, SAME_NONZERO_PATTERN);
+    
+    //Compute inverse of H0.
+    Mat H0_Inv;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
+    
+    InverseMPI(H0, H0_Inv);
+    
+    cout <<">>>>>>>>>>>"<<endl;
+    cout <<"H0 is"<<endl;
+    MatView(H0, PETSC_VIEWER_STDOUT_WORLD);
+    
+    cout <<">>>>>>>>>>>"<<endl;
+    cout <<"Inverse of H0 is"<<endl;
+    MatView(H0_Inv, PETSC_VIEWER_STDOUT_WORLD);
         
-        MatShift(I_Matrix, -1.0);
-        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
+    //Form H matrices for averaging method
+    MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+0*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
         
-        //Generate H0 and its inverse
-        Mat H0, H_temp_1, H_temp_2, H_temp_3;
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H0);
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H_temp_1);
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H_temp_2);
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H_temp_3);
+    MatSetValues(H_temp_2, loc_num_row, row_index, fNumRow, column_index, H+1*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
         
-        int* row;
-        row=new int[fNumRow];
-        for (int ri=0; ri<fNumRow; ri++) {
-            row[ri]=ri;
-        }
+    MatSetValues(H_temp_3, loc_num_row, row_index, fNumRow, column_index, H+2*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
         
-        MatSetValues(H0, fNumRow, row, fNumRow, row, H, INSERT_VALUES);
-        MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
-        MatScale(H0, 2.0*fa1+fa3);
-       
-        MatSetValues(H_temp_1, fNumRow, row, fNumRow, row, H+Hsize, INSERT_VALUES);
-        MatAssemblyBegin(H0, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H0, MAT_FINAL_ASSEMBLY);
+    MatScale(H_temp_1, fa2-fa1);
+    MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
+    MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
         
-        MatAXPY(H0, fa1, H_temp_1, SAME_NONZERO_PATTERN);
+    DenseMatMult(H0_Inv, H_temp_1, fH_Ave[0]);
         
-        Mat H0_Inv;
-        MatCreateSeqDense(PETSC_COMM_SELF, fNumRow, fNumRow, PETSC_NULL, &H0_Inv);
-        MatLUFactor(H0,0,0,0);
-        MatMatSolve(H0, I_Matrix, H0_Inv);
-        
-        //vectors
-        double* vec=new double[fNumRow*fNumRow];
-        int* column=new int[fNumRow];
-        for (int i=0; i<fNumRow; i++) {
-            column[i]=i;
-        }
-        
-        //Form H matrices for averaging method
-        MatSetValues(H_temp_1, fNumRow, column, fNumRow, column, H+0*Hsize, INSERT_VALUES);
+    for (int i=1; i<fNumMatrix-1; i++) {
+        MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+(i+0)*single_size, INSERT_VALUES);
         MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        
-        MatSetValues(H_temp_2, fNumRow, column, fNumRow, column, H+1*Hsize, INSERT_VALUES);
+            
+        MatSetValues(H_temp_2, loc_num_row, row_index, fNumRow, column_index, H+(i+1)*single_size, INSERT_VALUES);
         MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        
-        MatSetValues(H_temp_3, fNumRow, column, fNumRow, column, H+2*Hsize, INSERT_VALUES);
+            
+        MatSetValues(H_temp_3, loc_num_row, row_index, fNumRow, column_index, H+(i+2)*single_size, INSERT_VALUES);
         MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        
-        MatScale(H_temp_1, fa2-fa1);
+            
+        MatScale(H_temp_1, fa2);
         MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
         MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
-        
-        MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_2);
-        
-        MatAssemblyBegin(H_temp_2, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_2, MAT_FINAL_ASSEMBLY);
-        
-        MatGetValues(H_temp_2,fNumRow,column,fNumRow,column, vec);
-        MatSetValues(fH_Ave[0], fNumRow, column, fNumRow, column, vec, INSERT_VALUES);
-        
-        
-        for (int i=1; i<fNumMatrix-1; i++) {
-            MatSetValues(H_temp_1, fNumRow, column, fNumRow, column, H+(i+0)*Hsize, INSERT_VALUES);
-            MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
             
-            MatSetValues(H_temp_2, fNumRow, column, fNumRow, column, H+(i+1)*Hsize, INSERT_VALUES);
-            MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-            
-            MatSetValues(H_temp_3, fNumRow, column, fNumRow, column, H+(i+2)*Hsize, INSERT_VALUES);
-            MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-            
-            MatScale(H_temp_1, fa2);
-            MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
-            MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
-            
-            MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_2);
-            
-            MatAssemblyBegin(H_temp_2, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(H_temp_2, MAT_FINAL_ASSEMBLY);
-            MatGetValues(H_temp_2,fNumRow,column,fNumRow,column, vec);
-            MatSetValues(fH_Ave[i], fNumRow, column, fNumRow, column, vec, INSERT_VALUES);
-
-        }
-        
-        //compute the second to the last
-        MatSetValues(H_temp_1, fNumRow, column, fNumRow, column, H+(fNumMatrix-1)*Hsize, INSERT_VALUES);
-        MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        
-        MatSetValues(H_temp_2, fNumRow, column, fNumRow, column, H+(fNumMatrix)*Hsize, INSERT_VALUES);
-        MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        
-        MatScale(H_temp_1, fa2);
-        MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
-        
-        MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_2);
-        
-        MatAssemblyBegin(H_temp_2, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_2, MAT_FINAL_ASSEMBLY);
-        MatGetValues(H_temp_2,fNumRow,column,fNumRow,column, vec);
-        MatSetValues(fH_Ave[fNumMatrix-1], fNumRow, column, fNumRow, column, vec, INSERT_VALUES);
-        
-        
-        //compute the last 1
-        MatSetValues(H_temp_1, fNumRow, column, fNumRow, column, H+fNumMatrix*Hsize, INSERT_VALUES);
-        MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
-        MatScale(H_temp_1, fa2);
-
-        MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_2);
-        
-        MatAssemblyBegin(H_temp_2, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(H_temp_2, MAT_FINAL_ASSEMBLY);
-        MatGetValues(H_temp_2,fNumRow,column,fNumRow,column, vec);
-        MatSetValues(fH_Ave[fNumMatrix], fNumRow, column, fNumRow, column, vec, INSERT_VALUES);
-
-        
-        delete [] vec;
-        delete [] row;
-        delete [] column;
-        
-        MatDestroy(&I_Matrix);
-        MatDestroy(&H0);
-        MatDestroy(&H0_Inv);
-        MatDestroy(&H_temp_1);
-        MatDestroy(&H_temp_2);
-        MatDestroy(&H_temp_3);
+        DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
     }
+        
+    //compute the second to the last
+    MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+(fNumMatrix-1)*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
+        
+    MatSetValues(H_temp_2, loc_num_row, row_index, fNumRow, column_index, H+(fNumMatrix)*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
+        
+    MatScale(H_temp_1, fa2);
+    MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
+    
+    DenseMatMult(H0_Inv, H_temp_1, fH_Ave[fNumMatrix-1]);
+        
+    //compute the last 1
+    MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+fNumMatrix*single_size, INSERT_VALUES);
+    MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(H_temp_1, MAT_FINAL_ASSEMBLY);
+    MatScale(H_temp_1, fa2);
 
-
-    for (int i=0; i<fNumMatrix+1; i++) {
-        MatAssemblyBegin(fH_Ave[i], MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(fH_Ave[i], MAT_FINAL_ASSEMBLY);
-    }
-
+    DenseMatMult(H0_Inv, H_temp_1, fH_Ave[fNumMatrix]);
+    
+    delete [] row_index;
+    delete [] column_index;
+        
+    MatDestroy(&H0);
+    MatDestroy(&H0_Inv);
+    MatDestroy(&H_temp_1);
+    MatDestroy(&H_temp_2);
+    MatDestroy(&H_temp_3);
 }
 
 
@@ -416,7 +366,8 @@ void EigenAnalysisT::FormA_Direct()
     delete [] column_global;
     delete [] vec;
     
-    //MatView(fA_Direct,PETSC_VIEWER_STDOUT_WORLD);
+    cout <<"fA_Direct is"<<endl;
+    MatView(fA_Direct,PETSC_VIEWER_STDOUT_WORLD);
 }
 
 
@@ -624,8 +575,63 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
     
 }
 
+//This function is implemented to take the place of MatMatMult in Petsc.
+//If MatMatMult can work for dense matrices, this function can be replaced.
+void EigenAnalysisT::DenseMatMult(Mat A, Mat B, Mat& C)
+{
+    int m, n;
+    MatGetSize(A, &m, &n);
+    
+    int p, q;
+    MatGetSize(B, &p, &q);
+    
+    if (n != p) {
+        throw "!!!!! EignAnalysisT::DenseMatMult, matrix dimension does not match";
+    }
+    
+    Vec B_column; //One column of B
+    Vec C_column; //One column of C
+    
+    VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, p, &B_column);
+    VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m, &C_column);
+    
+    int lower, upper;
+    VecGetOwnershipRange(C_column, &lower, &upper);
+    upper -= 1;
+    int local_size=upper-lower+1;
+    int* row_index=new int[local_size];
+    
+    for (int i=0; i<local_size; i++) {
+        row_index[i]=lower+i;
+    }
+    
+    //loop over columns
+    for (int j=0; j<q; j++) {
+        MatGetColumnVector(B, B_column, j);
+        
+        MatMult(A, B_column, C_column);
+    
+        //MatView(A, PETSC_VIEWER_STDOUT_WORLD);
+        //VecView(B_column, PETSC_VIEWER_STDOUT_WORLD);
+        //VecView(C_column, PETSC_VIEWER_STDOUT_WORLD);
+        
+        double* C_pointer;
+        VecGetArray(C_column, &C_pointer);
+        MatSetValues(C, local_size, row_index, 1, &j, C_pointer, INSERT_VALUES);
+        VecRestoreArray(C_column, &C_pointer);
+        
+        MatAssemblyBegin(C, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(C, MAT_FINAL_ASSEMBLY);
+        //MatView(C, PETSC_VIEWER_STDOUT_WORLD);
+        
+    }
 
-
+    
+    VecDestroy(&B_column);
+    VecDestroy(&C_column);
+    delete [] row_index;
+    
+}
 
 
 
