@@ -11,7 +11,11 @@
 #include <cstring>
 #include "iomanip"
 
+#include "slepcsys.h"
 #include "cmath"
+#include "petscmat.h"
+#include "petscksp.h"
+
 
 using namespace Stability;
 using namespace std;
@@ -28,6 +32,7 @@ GHReaderT::GHReaderT()
     fG2=NULL;
     
     fH=NULL;
+    fG=NULL;
 }
 
 
@@ -171,14 +176,30 @@ void GHReaderT::ReadMatrixNumRow()
 
 void GHReaderT::ReadMatrices()
 {
+    Mat AA;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &AA);
+    
+    int lower, upper;
+    MatGetOwnershipRange(AA, &lower, &upper);
+    upper -= 1;
+    MatDestroy(&AA);
+    
     //Allocate matrices
-    int single_size=fNumRow*fNumRow;
+    int local_num_row= upper-lower+1;
+    int single_size= local_num_row*fNumRow; //size of one matrix
     int total_size= fNumMatrix*single_size;
+    
+    //int rank;
+    //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    //cout << "rank "<<rank <<" lower="<<lower<< " upper="<<upper<<endl;
+    //cout << "rank "<<rank <<" local_num_row="<<local_num_row<<endl;
+    //cout << "rank "<<rank <<" single_size="<<single_size<<endl;
+    //cout << "rank "<<rank <<" total_size="<<total_size<<endl;
     
     fH1=new double[total_size];
     fH2=new double[total_size];
-    //fG1=new double[total_size];
-    //fG2=new double[total_size];
+    fG1=new double[total_size];
+    fG2=new double[total_size];
     
     //read fH1
     for (int mi=0; mi<fNumMatrix; mi++) {
@@ -188,15 +209,21 @@ void GHReaderT::ReadMatrices()
         convert_H1 << "H1_step" << mi <<".txt";
         H1_file=convert_H1.str();
         
-        ReadMatrix(fH1+mi*single_size, 0, fNumRow-1, H1_file.c_str());
+        ReadMatrix(fH1+mi*single_size, lower, upper, H1_file.c_str());
         
-        /*ofstream write;
+        /*string out_file;
+        ostringstream convert_out;
         
-        write.open("H1_out.txt",ios_base::out);
+        convert_out << "H1_step_" << mi << "_rank_"<<rank<< "_.txt";
+        out_file=convert_out.str();
+        
+        ofstream write;
+        
+        write.open(out_file.c_str(),ios_base::out);
     
-        for (int i=0; i<fNumRow*fNumMatrix; i++) {
+        for (int i=0; i<local_num_row; i++) {
             for (int j=0; j<fNumRow; j++) {
-                write<< setw(15) << setprecision(5) << std::scientific << fH1[i*fNumRow+j];
+                write<< setw(15) << setprecision(5) << std::scientific << fH1[mi*single_size+i*fNumRow+j];
             }
             write<<endl;
         }
@@ -212,20 +239,29 @@ void GHReaderT::ReadMatrices()
         convert_H2 << "H2_step" << mi <<".txt";
         H2_file=convert_H2.str();
         
-        ReadMatrix(fH2+mi*single_size, 0, fNumRow-1, H2_file.c_str());
+        ReadMatrix(fH2+mi*single_size, lower, upper, H2_file.c_str());
+    }
+    
+    //read fG1
+    for (int mi=0; mi<fNumMatrix; mi++) {
+        string G1_file;
+        ostringstream convert_G1;
         
-        /*ofstream write;
-         
-         write.open("H2_out.txt",ios_base::out);
+        convert_G1 << "G1_step" << mi <<".txt";
+        G1_file=convert_G1.str();
         
-         for (int i=0; i<fNumRow*fNumMatrix; i++) {
-         for (int j=0; j<fNumRow; j++) {
-         write<< setw(15) << setprecision(5) << std::scientific << fH2[i*fNumRow+j];
-         }
-         write<<endl;
-         }
-         
-         write.close();*/
+        ReadMatrix(fG1+mi*single_size, lower, upper, G1_file.c_str());
+    }
+    
+    //read fG2
+    for (int mi=0; mi<fNumMatrix; mi++) {
+        string G2_file;
+        ostringstream convert_G2;
+        
+        convert_G2 << "G2_step" << mi <<".txt";
+        G2_file=convert_G2.str();
+        
+        ReadMatrix(fG2+mi*single_size, lower, upper, G2_file.c_str());
     }
     
     //group H
@@ -236,7 +272,7 @@ void GHReaderT::ReadMatrices()
         fH[i]=fH1[i];
     }
     
-    for (int i=1; i<fNumMatrix-1; i++) {
+    for (int i=1; i<fNumMatrix; i++) {
         
         int h2_start=(i-1)*single_size;
         int h2_end=i*single_size;
@@ -256,6 +292,42 @@ void GHReaderT::ReadMatrices()
     for (int j=h2_start; j<h2_end; j++) {
         fH[j+single_size]=fH2[j];
     }
+    
+    
+    //group G
+    int G_size=(fNumMatrix+1)*single_size;
+    fG=new double[G_size];
+    
+    for (int i=0; i<single_size; i++) {
+        fG[i]=fG1[i];
+    }
+    
+    for (int i=1; i<fNumMatrix; i++) {
+        
+        int g2_start=(i-1)*single_size;
+        int g2_end=i*single_size;
+        for (int j=g2_start; j<g2_end; j++) {
+            fG[j+single_size]=fG2[j];
+        }
+        
+        int g1_start=i*single_size;
+        int g1_end=(i+1)*single_size;
+        for (int j=g1_start; j<g1_end; j++) {
+            fG[j]+=fG1[j];
+        }
+    }
+    
+    int g2_start=(fNumMatrix-1)*single_size;
+    int g2_end=fNumMatrix*single_size;
+    for (int j=g2_start; j<g2_end; j++) {
+        fG[j+single_size]=fG2[j];
+    }
+    
+    delete [] fG1; fG1=NULL;
+    delete [] fG2; fG2=NULL;
+    delete [] fH1; fH1=NULL;
+    delete [] fH2; fH2=NULL;
+    
 }
 
 
@@ -265,7 +337,7 @@ void GHReaderT::GetH(double **H)
 }
 
 
-void GHReaderT::ReadMatrix(double* H, int firstRowm, int lastRow, const char* file)
+void GHReaderT::ReadMatrix(double* H, int firstRow, int lastRow, const char* file)
 {
     ifstream input;
     
@@ -276,19 +348,19 @@ void GHReaderT::ReadMatrix(double* H, int firstRowm, int lastRow, const char* fi
         throw "cannot find file";
     }
     
-    int a;
+    double a;
     
     //read useless part;
-    for (int i=0; i<firstRowm; i++) {
+    for (int i=0; i<firstRow; i++) {
         for (int j=0; j<fNumRow; j++) {
             input>> a;
         }
     }
     
     //read the effective part;
-    for (int i=firstRowm; i<lastRow+1; i++) {
+    for (int i=firstRow; i<lastRow+1; i++) {
         for (int j=0; j<fNumRow; j++) {
-            input>> H[i*fNumRow+j];
+            input>> H[(i-firstRow)*fNumRow+j];
         }
     }
     
@@ -303,5 +375,95 @@ void GHReaderT::GetMatrices(double** H1, double** H2, double** G1, double** G2)
     *H2=fH2;
     *G1=fG1;
     *G2=fG2;
+}
+
+void GHReaderT::ExchangeColumn_GH()
+{
+    ifstream input;
+    
+    input.open("UBC.txt",ios_base::in);
+    
+    if (!input.good()) {
+        cout<< "GHReaderT::ExchangeColumn_GH() " << "UBC.txt" <<endl;
+        throw "cannot find file";
+    }
+    
+    int ubc_num=0;
+    input >> ubc_num;
+    
+    int* ubc=new int [ubc_num];
+    
+    for (int i=0; i<ubc_num; i++) {
+        input>>ubc[i];
+        ubc[i] -= 1;
+    }
+    
+    input.close();
+    
+    Mat AA;
+    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, fNumRow, fNumRow, PETSC_NULL, &AA);
+    
+    int lower, upper;
+    MatGetOwnershipRange(AA, &lower, &upper);
+    upper -= 1;
+    MatDestroy(&AA);
+    
+    //Compute matrix dimesions
+    int local_num_row= upper-lower+1;
+    int totoal_num_row= local_num_row*(fNumMatrix+1); //number of rows of the global matrix
+    
+    int rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    
+    
+    /*if (rank==0) {
+        cout <<"\n"<<"Matrix H is"<<endl;
+        
+        for (int i=0; i<totoal_num_row; i++) {
+            for (int j=0; j<fNumRow; j++) {
+                cout <<setw(5) << fH[i*fNumRow+j] << " ";
+            }
+            cout<<endl;
+        }
+        
+        cout <<"\n"<<"Matrix G is"<<endl;
+        for (int i=0; i<totoal_num_row; i++) {
+            for (int j=0; j<fNumRow; j++) {
+                cout <<setw(5) << fG[i*fNumRow+j] << " ";
+            }
+            cout<<endl;
+        }
+    }*/
+
+    for (int i=0; i<ubc_num; i++) {
+        for (int j=0; j<totoal_num_row; j++) {
+            int dof=ubc[i];
+            fH[j*fNumRow+i] = -fG[j*fNumRow+dof];
+        }
+    }
+    
+    /*
+    if (rank==0) {
+        cout <<"\n"<<"Matrix H is"<<endl;
+        
+        for (int i=0; i<totoal_num_row; i++) {
+            for (int j=0; j<fNumRow; j++) {
+                cout <<setw(5) << fH[i*fNumRow+j] << " ";
+            }
+            cout<<endl;
+        }
+        
+        cout <<"\n"<<"Matrix G is"<<endl;
+        for (int i=0; i<totoal_num_row; i++) {
+            for (int j=0; j<fNumRow; j++) {
+                cout <<setw(5) << fG[i*fNumRow+j] << " ";
+            }
+            cout<<endl;
+        }
+    }*/
+    
+    
+    delete [] ubc; ubc=NULL;
+    delete [] fG;  fG=NULL;
 }
 

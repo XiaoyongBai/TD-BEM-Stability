@@ -34,19 +34,20 @@ int main( int argc, char **argv )
         cout<<"num matrix="<<num_matrix<<endl;
         cout<<"num row="<<num_row<<endl;
     
-        if (rank==0) {
-            reader.ReadMatrices();
-        }
+        reader.ReadMatrices();
+        reader.ExchangeColumn_GH();
+        
         MPI_Barrier(PETSC_COMM_WORLD);
         
         double* H;
         reader.GetH(&H);
         
-        EigenAnalysisT EA;
-        EA.SetMatrixNumSize(num_matrix, num_row);
+        //EigenAnalysisT EA;
+        //EA.SetMatrixNumSize(num_matrix, num_row);
         
-        EA.SetMatrixSystem_Direct(H);
+        //EA.SetMatrixSystem_Direct(H);
         
+        /*
         double aa = EA.LargestEigen_Direct();
         cout << "\n the largest eigenvalue of A for direct stepping=" << aa <<endl;
 
@@ -85,15 +86,13 @@ int main( int argc, char **argv )
          }
          
         if (rank==0) write_eig.close();
-        
+        */
         
     } catch (const char* msg) {
         cerr<<msg<<endl;
         return 0;
     }
-    
-    
-    
+
     
     ierr = SlepcFinalize();
     return 1;

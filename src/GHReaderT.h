@@ -22,6 +22,9 @@ public:
     //Read all the G, H matrices.
     void ReadMatrices();
     
+    //Exchange the Columns of G and H, based on the displacement boundary condition
+    void ExchangeColumn_GH();
+    
     //Read one G or H with the name File.
     void ReadMatrix(double* H, int firstRow, int lastRow, const char* File);
     
@@ -37,7 +40,7 @@ public:
 private:
     int fNumMatrix; //Number of matrices to be used for stability analysis.
     
-    int fNumRow; //Number of rows in each matrix
+    int fNumRow; //Number of rows in each G and H matrix
     
     //When linear interploation is adopted for time discretization, two H and two G matrices will be generated each step.
     //Store all the matrices in one array.
@@ -48,6 +51,7 @@ private:
     double* fG2;
     
     double* fH;
+    double* fG;
     
 };//end of definition of class GHReaderT
     

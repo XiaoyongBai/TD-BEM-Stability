@@ -574,7 +574,7 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
     MatGetSize(A, &m, &n);
     
     if (m != n) {
-        throw "!!!!! EignAnalysisT::Inverse, the matrix must be squre";
+        throw "!!!!! EignAnalysisT::InverseMPI, the matrix must be squre";
     }
         
     KSP ksp;
@@ -604,11 +604,6 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
         VecAssemblyEnd(I);
         
         KSPSolve(ksp, I, X);
-
-        //cout<<"I is"<<endl;
-        //VecView(I, PETSC_VIEWER_STDOUT_WORLD);
-        //cout<<"X is"<<endl;
-        //VecView(X, PETSC_VIEWER_STDOUT_WORLD);
         
         VecGetArray(X, &X_local);
         
