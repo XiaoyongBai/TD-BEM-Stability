@@ -153,9 +153,9 @@ void EigenAnalysisT::SetMatrixSystem_Direct(double* H)
         //cout <<"H_temp " << i << " is "<<endl;
         //MatView(H_temp, PETSC_VIEWER_STDOUT_WORLD);
         
-        DenseMatMult(H0_Inv, H_temp, fH_Direct[i]);
+        //DenseMatMult(H0_Inv, H_temp, fH_Direct[i]);
         
-        //MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, &H_temp_1);
+        MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Direct+i);
         //cout <<"H_Direct " << i << " is "<<endl;
         //MatView(fH_Direct[i], PETSC_VIEWER_STDOUT_WORLD);
     }
@@ -240,8 +240,9 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
     MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
         
-    DenseMatMult(H0_Inv, H_temp_1, fH_Ave[0]);
-        
+    //DenseMatMult(H0_Inv, H_temp_1, fH_Ave[0]);
+    MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave);
+    
     for (int i=1; i<fNumMatrix-1; i++) {
         MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+(i+0)*single_size, INSERT_VALUES);
         MatAssemblyBegin(H_temp_1, MAT_FINAL_ASSEMBLY);
@@ -259,7 +260,9 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
         MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
         MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
             
-        DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
+        //DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
+        
+        MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave+i);
     }
         
     //compute the second to the last
