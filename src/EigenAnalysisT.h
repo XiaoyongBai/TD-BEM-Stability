@@ -44,6 +44,17 @@ public:
     //C=A*B
     void DenseMatMult(Mat A, Mat B, Mat& C);
     
+    
+    //Shell for A
+    static void MatMult_A_Shell(Mat A, Vec x, Vec y);
+    
+    //Decompose V into m sub vecotors with the same length
+    void DecomposeVector(Vec V, int m, Vec* sub_V);
+    void CombineVector(int m, Vec* sub_V, Vec V);
+    
+    int GetNumMatrix();
+    Mat* Get_H_Ave();
+    
 private:
     int fNumMatrix; //Number of matrices to be used for stability analysis.
     int fNumRow; //Number of rows in each matrix

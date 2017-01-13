@@ -19,6 +19,7 @@
 using namespace Stability;
 using namespace std;
 
+
 EigenAnalysisT::EigenAnalysisT()
 {
     fNumMatrix=0;
@@ -35,33 +36,6 @@ EigenAnalysisT::EigenAnalysisT()
     fa3=1-fa1-fa2;
     
     MPI_Comm_rank(PETSC_COMM_WORLD, &fRank );
-    
-    
-    //test inverse
-    /*Mat AA;
-    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, 3, 3, PETSC_NULL, &AA);
-    MatZeroEntries(AA);
-    MatSetValue(AA, 0, 1, 1, INSERT_VALUES);
-    MatSetValue(AA, 1, 0, 3, INSERT_VALUES);
-    MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
-    MatShift(AA, 2.0);
-    MatAssemblyBegin(AA, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(AA, MAT_FINAL_ASSEMBLY);
-    
-    cout <<">>>>>>>>>>>"<<endl;
-    MatView(AA, PETSC_VIEWER_STDOUT_WORLD);
-    
-    Mat BB;
-    MatConvert(AA, MATSAME, MAT_INITIAL_MATRIX, &BB);
-    InverseMPI(AA, BB);
-
-    
-    cout <<">>>>>>>>>>>"<<endl;
-    MatView(BB, PETSC_VIEWER_STDOUT_WORLD);
-    
-    MatDestroy(&AA);
-    MatDestroy(&BB);*/
 }
 
 
@@ -153,9 +127,9 @@ void EigenAnalysisT::SetMatrixSystem_Direct(double* H)
         //cout <<"H_temp " << i << " is "<<endl;
         //MatView(H_temp, PETSC_VIEWER_STDOUT_WORLD);
         
-        //DenseMatMult(H0_Inv, H_temp, fH_Direct[i]);
+        DenseMatMult(H0_Inv, H_temp, fH_Direct[i]);
         
-        MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Direct+i);
+        //MatMatMult(H0_Inv, H_temp, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Direct+i);
         //cout <<"H_Direct " << i << " is "<<endl;
         //MatView(fH_Direct[i], PETSC_VIEWER_STDOUT_WORLD);
     }
@@ -240,8 +214,8 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
     MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
         
-    //DenseMatMult(H0_Inv, H_temp_1, fH_Ave[0]);
-    MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave);
+    DenseMatMult(H0_Inv, H_temp_1, fH_Ave[0]);
+    //MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave);
     
     for (int i=1; i<fNumMatrix-1; i++) {
         MatSetValues(H_temp_1, loc_num_row, row_index, fNumRow, column_index, H+(i+0)*single_size, INSERT_VALUES);
@@ -260,9 +234,9 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
         MatAXPY(H_temp_1, fa3, H_temp_2, SAME_NONZERO_PATTERN);
         MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
             
-        //DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
+        DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
         
-        MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave+i);
+        //MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave+i);
     }
         
     //compute the second to the last
@@ -289,7 +263,10 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     
     delete [] row_index;
     delete [] column_index;
-        
+    
+
+    
+    
     MatDestroy(&H0);
     MatDestroy(&H0_Inv);
     MatDestroy(&H_temp_1);
@@ -445,6 +422,47 @@ void EigenAnalysisT::FormA_Ave()
     delete [] row;
     delete [] column_global;
     delete [] vec;
+    
+    Mat A_shell;
+
+    MatCreateShell(PETSC_COMM_WORLD, PETSC_DETERMINE,  PETSC_DETERMINE, NumARow, NumARow, this, &A_shell);
+    MatSetFromOptions(A_shell);
+    MatShellSetOperation(A_shell, MATOP_MULT, (void(*)())EigenAnalysisT::MatMult_A_Shell);
+    
+    
+    EPS eps;
+    EPSCreate(PETSC_COMM_WORLD,&eps);
+    
+
+    EPSSetOperators(eps,A_shell,NULL);
+    EPSSetProblemType(eps,EPS_NHEP);
+    
+
+    EPSSetFromOptions(eps);
+
+    EPSSolve(eps);
+    
+   
+    EPSType        type;
+    EPSGetType(eps,&type);
+    PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);
+    int nev;
+    EPSGetDimensions(eps,&nev,NULL,NULL);
+    PetscPrintf(PETSC_COMM_WORLD," Number of requested eigenvalues: %D\n",nev);
+    
+    int nconv;
+    double kr, ki; //real and imaginary part of the first eigenvalue
+    EPSGetConverged( eps, &nconv ); //get the number of available eigenvalues
+    for (int j=0; j<1; j++) {
+        EPSGetEigenpair( eps, j, &kr, &ki, PETSC_NULL, PETSC_NULL );
+    }
+    
+    double lambda=sqrt(kr*kr+ki*ki);
+    cout << "lambda="<<lambda<<endl;
+    
+    EPSDestroy(&eps);
+    MatDestroy(&A_shell);
+    
 }
 
 
@@ -515,7 +533,6 @@ double EigenAnalysisT::LargestEigen_Ave()
     {
         lambda=-1.0;
     }
-
     
     EPSDestroy(&eps);
     
@@ -532,6 +549,7 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
         throw "!!!!! EignAnalysisT::InverseMPI, the matrix must be squre";
     }
         
+    //The following codes invert the matrix column by column
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
@@ -578,6 +596,7 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
     delete [] row_position;
     
 }
+
 
 //This function is implemented to take the place of MatMatMult in Petsc.
 //If MatMatMult can work for dense matrices, this function can be replaced.
@@ -639,15 +658,195 @@ void EigenAnalysisT::DenseMatMult(Mat A, Mat B, Mat& C)
 
 
 
+void EigenAnalysisT::MatMult_A_Shell(Mat A, Vec x, Vec y)
+{
+    //test as indentity matrix
+    /*int m, n;
+    MatGetSize(A, &m, &n);
+    
+    const PetscScalar *px;
+    PetscScalar       *py;
+    PetscErrorCode    ierr;
+    
+    ierr = VecGetArrayRead(x,&px);
+    ierr = VecGetArray(y,&py);
+    
+    int low, high;
+    VecGetOwnershipRange(x, &low, &high);
+    int local_length=high-low;
+    
+    for (int i=0;i<local_length;i++) py[i] = 1*px[i];
+    
+    ierr = VecRestoreArrayRead(x,&px);
+    ierr = VecRestoreArray(y,&py);*/
+    
+    //Decompose Vector
+    EigenAnalysisT* EA = NULL;
+    MatShellGetContext(A, (void**)&EA);
+    
+    
+    int NumMatrix=EA->GetNumMatrix();
+    Mat* H_Ave=EA->Get_H_Ave();
+    
+    int m_local, n_local;
+    MatGetSize(*H_Ave, &m_local, &n_local);
+    
+    Vec* sub_x=new Vec[NumMatrix+1];
+    Vec* sub_y=new Vec[NumMatrix+1];
+    for (int i=0; i<NumMatrix+1; i++) {
+        VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m_local, sub_x+i);
+        VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m_local, sub_y+i);
+    }
+    
+    EA->DecomposeVector(x, NumMatrix+1, sub_x);
+    
+    //form the fisrt row
+    VecZeroEntries(sub_y[0]);
+    
+    
+    Vec y_temp;
+    VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, m_local, &y_temp);
+    for (int i=0; i<NumMatrix+1; i++) {
+        
+        VecCopy(sub_y[0], y_temp);
+        MatMultAdd(H_Ave[i], sub_x[i], y_temp, sub_y[0]);
+    }
+    
+    //form the remaining rows
+    for (int i=1; i<NumMatrix+1; i++) {
+        VecCopy(sub_x[i-1], sub_y[i]);
+    }
+    
+    EA->CombineVector(NumMatrix+1, sub_y, y);
+    
+    
+    for (int i=0; i<NumMatrix+1; i++) {
+        VecDestroy(sub_x+i);
+        VecDestroy(sub_x+i);
+    }
+    
+    delete [] sub_x;
+    delete [] sub_y;
+    
+    
+    //VecView(y, PETSC_VIEWER_STDOUT_WORLD);
+
+    
+}
+
+void EigenAnalysisT::DecomposeVector(Vec V, int m, Vec *sub_V)
+{
+    int length;
+    VecGetSize(V, &length);
+    
+    int sub_length;
+    VecGetSize(*sub_V, &sub_length);
+    
+    int mod=length%m;
+    if (mod != 0) {
+        throw "EigenAnalysisT::DecomposeVector, V cannot be divided into m sub vectors";
+    }
+    
+    int low, high;
+    VecGetOwnershipRange(V, &low, &high);
+    high -=1;
+    
+    int local_length=high-low+1;
+    
+    const double* V_pointer;
+    VecGetArrayRead(V, &V_pointer);
+    
+    for (int i=0; i<local_length; i++) {
+        int global_id=low+i;
+        int vec_id=floor(global_id/sub_length);
+        int sub_id=global_id%sub_length;
+        
+        VecSetValue(sub_V[vec_id], sub_id, V_pointer[i], INSERT_VALUES);
+    }
+    
+    
+    for (int i=0; i<m; i++) {
+        VecAssemblyBegin(sub_V[i]);
+        VecAssemblyEnd(sub_V[i]);
+    }
+    
+    VecRestoreArrayRead(V, &V_pointer);
+    
+    /*cout <<"Gross V is: "<<endl;
+    VecView(V, PETSC_VIEWER_STDOUT_WORLD);
+    
+    for (int i=0; i<m; i++) {
+        cout << i << "th sub V is: "<<endl;
+        
+        VecView(sub_V[i], PETSC_VIEWER_STDOUT_WORLD);
+    }*/
+    
+}
 
 
 
+void EigenAnalysisT::CombineVector(int m, Vec *sub_V, Vec V)
+{
+    int global_length;
+    VecGetSize(V, &global_length);
+    
+    int sub_length;
+    VecGetSize(*sub_V, &sub_length);
+    
+    if (m*sub_length != global_length) {
+        throw "EigenAnalysisT::CombineVector, dimensions do not match!!";
+    }
+    
+
+    int low, high;
+    VecGetOwnershipRange(*sub_V, &low, &high);
+    high -=1;
+    
+    int local_length=high-low+1;
+    int* index=new int [local_length];
+    
+    for (int i=0; i<m; i++) {
+        int head=i*sub_length+low;
+        
+        for (int j=0; j<local_length; j++) {
+            index[j]=head+j;
+        }
+        
+        const double* sub_V_pointer;
+        VecGetArrayRead(sub_V[i], &sub_V_pointer);
+        
+        VecSetValues(V, local_length, index, sub_V_pointer, INSERT_VALUES);
+        VecRestoreArrayRead(sub_V[i], &sub_V_pointer);
+    }
+    
+    VecAssemblyBegin(V);
+    VecAssemblyEnd(V);
+    
+    
+    delete [] index;
+    
+    /*cout <<"Gross V is: "<<endl;
+    VecView(V, PETSC_VIEWER_STDOUT_WORLD);
+    
+    for (int i=0; i<m; i++) {
+        cout << i << "th sub V is: "<<endl;
+        
+        VecView(sub_V[i], PETSC_VIEWER_STDOUT_WORLD);
+    }*/
+
+}
 
 
+int EigenAnalysisT::GetNumMatrix()
+{
+    return fNumMatrix;
+}
 
 
-
-
+Mat* EigenAnalysisT::Get_H_Ave()
+{
+    return fH_Ave;
+}
 
 
 
