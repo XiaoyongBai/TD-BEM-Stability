@@ -44,12 +44,6 @@ int main( int argc, char **argv )
         
         EigenAnalysisT EA;
         EA.SetMatrixNumSize(num_matrix, num_row);
-        
-        EA.SetMatrixSystem_Direct(H);
-        
-        
-        double aa = EA.LargestEigen_Direct();
-        cout << "\n the largest eigenvalue of A for direct stepping=" << aa <<endl;
 
         double A1=0.25;
         double A2=0.25;
