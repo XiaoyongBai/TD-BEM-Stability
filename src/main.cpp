@@ -9,6 +9,8 @@
 #include "GHReaderT.h"
 #include "EigenAnalysisT.h"
 
+#include <ctime>
+
 using namespace std;
 using namespace Stability;
 
@@ -44,15 +46,24 @@ int main( int argc, char **argv )
         
         EigenAnalysisT EA;
         EA.SetMatrixNumSize(num_matrix, num_row);
-
-        double A1=0.25;
+        
+        std::time_t result;
+        /*double A1=0.25;
         double A2=0.25;
+        
+        std::time_t result = std::time(nullptr);
+        std::cout << std::asctime(std::localtime(&result)) <<endl;
+        
         EA.SetMatrixSystem_Ave(H, A1, A2);
         
-        double bb=EA.LargestEigen_Ave();
+        result = std::time(nullptr);
+        std::cout << std::asctime(std::localtime(&result)) <<endl;
         
-        cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;
-                
+        double bb=EA.LargestEigen_Ave();
+        cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;*/
+
+        result = std::time(NULL);
+    
         ofstream write_eig;
         
         if ( rank==0 ) {
@@ -65,8 +76,14 @@ int main( int argc, char **argv )
          
                  if (a2==1.0) continue;
                  
+                 result = std::time(NULL);
+                 std::cout << std::asctime(std::localtime(&result)) <<endl;
+                 
                  EA.SetMatrixSystem_Ave(H, a1, a2);
          
+                 result = std::time(NULL);
+                 std::cout << std::asctime(std::localtime(&result)) <<endl;
+                 
                  double eig=EA.LargestEigen_Ave();
                  
                  if (rank==0) {

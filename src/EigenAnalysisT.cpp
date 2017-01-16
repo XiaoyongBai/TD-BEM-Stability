@@ -16,6 +16,8 @@
 #include "petscmat.h"
 #include "petscksp.h"
 
+#include <ctime>
+
 using namespace Stability;
 using namespace std;
 
@@ -189,6 +191,9 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     InverseMPI(H0, H0_Inv);
     MatScale(H0_Inv, -1);
     
+    std::time_t  result = std::time(NULL);
+    std::cout << std::asctime(std::localtime(&result)) <<endl;
+    
     //cout <<">>>>>>>>>>>"<<endl;
     //cout <<"H0 is"<<endl;
     //MatView(H0, PETSC_VIEWER_STDOUT_WORLD);
@@ -235,8 +240,6 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
         MatAXPY(H_temp_1, fa1, H_temp_3, SAME_NONZERO_PATTERN);
             
         DenseMatMult(H0_Inv, H_temp_1, fH_Ave[i]);
-        
-        //MatMatMult(H0_Inv, H_temp_1, MAT_REUSE_MATRIX, PETSC_DEFAULT, fH_Ave+i);
     }
         
     //compute the second to the last
@@ -263,8 +266,6 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     
     delete [] row_index;
     delete [] column_index;
-    
-
     
     
     MatDestroy(&H0);
@@ -422,47 +423,6 @@ void EigenAnalysisT::FormA_Ave()
     delete [] row;
     delete [] column_global;
     delete [] vec;
-    
-    Mat A_shell;
-
-    MatCreateShell(PETSC_COMM_WORLD, PETSC_DETERMINE,  PETSC_DETERMINE, NumARow, NumARow, this, &A_shell);
-    MatSetFromOptions(A_shell);
-    MatShellSetOperation(A_shell, MATOP_MULT, (void(*)())EigenAnalysisT::MatMult_A_Shell);
-    
-    
-    EPS eps;
-    EPSCreate(PETSC_COMM_WORLD,&eps);
-    
-
-    EPSSetOperators(eps,A_shell,NULL);
-    EPSSetProblemType(eps,EPS_NHEP);
-    
-
-    EPSSetFromOptions(eps);
-
-    EPSSolve(eps);
-    
-   
-    EPSType        type;
-    EPSGetType(eps,&type);
-    PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);
-    int nev;
-    EPSGetDimensions(eps,&nev,NULL,NULL);
-    PetscPrintf(PETSC_COMM_WORLD," Number of requested eigenvalues: %D\n",nev);
-    
-    int nconv;
-    double kr, ki; //real and imaginary part of the first eigenvalue
-    EPSGetConverged( eps, &nconv ); //get the number of available eigenvalues
-    for (int j=0; j<1; j++) {
-        EPSGetEigenpair( eps, j, &kr, &ki, PETSC_NULL, PETSC_NULL );
-    }
-    
-    double lambda=sqrt(kr*kr+ki*ki);
-    cout << "lambda="<<lambda<<endl;
-    
-    EPSDestroy(&eps);
-    MatDestroy(&A_shell);
-    
 }
 
 
@@ -503,38 +463,39 @@ double EigenAnalysisT::LargestEigen_Direct(void)
 
 double EigenAnalysisT::LargestEigen_Ave()
 {
-    FormA_Ave();
+    Mat A_shell;
     
-    //Create the eigensolver and set various options
-    //Create eigensolver context
-    EPS eps; /* eigenproblem solver context */
+    int NumARow=(fNumMatrix+1)*fNumRow;
+    MatCreateShell(PETSC_COMM_WORLD, PETSC_DETERMINE,  PETSC_DETERMINE, NumARow, NumARow, this, &A_shell);
+    MatSetFromOptions(A_shell);
+    MatShellSetOperation(A_shell, MATOP_MULT, (void(*)())EigenAnalysisT::MatMult_A_Shell);
+    
+    EPS eps;
     EPSCreate(PETSC_COMM_WORLD,&eps);
     
-    //Set operators. In this case, it is a standard eigenvalue problem */
-    EPSSetOperators(eps,fA_Ave,NULL);
+    EPSSetOperators(eps,A_shell,NULL);
     EPSSetProblemType(eps,EPS_NHEP);
     EPSSetFromOptions(eps);
-    EPSSetWhichEigenpairs(eps,EPS_LARGEST_MAGNITUDE);
+    EPSSetWhichEigenpairs(eps, EPS_LARGEST_MAGNITUDE);
     
-    //Solve
     EPSSolve(eps);
-    //EPSView(eps, PETSC_VIEWER_STDOUT_WORLD);
+    
+    EPSType        type;
+    EPSGetType(eps,&type);
+    PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);
     
     int nconv;
-    double kr, ki, lambda; //real and imaginary part of the first eigenvalue
+    double kr, ki; //real and imaginary part of the first eigenvalue
     EPSGetConverged( eps, &nconv ); //get the number of available eigenvalues
-    
-    if (nconv>=1) {
-        for (int j=0; j<1; j++) {
-            EPSGetEigenpair( eps, j, &kr, &ki, PETSC_NULL, PETSC_NULL );
-        }
-        lambda=sqrt(kr*kr+ki*ki);
-    }else
-    {
-        lambda=-1.0;
+    for (int j=0; j<1; j++) {
+        EPSGetEigenpair( eps, j, &kr, &ki, PETSC_NULL, PETSC_NULL );
     }
     
+    double lambda=sqrt(kr*kr+ki*ki);
+    cout << "lambda="<<lambda<<endl;
+    
     EPSDestroy(&eps);
+    MatDestroy(&A_shell);
     
     return lambda;
 }
@@ -660,26 +621,6 @@ void EigenAnalysisT::DenseMatMult(Mat A, Mat B, Mat& C)
 
 void EigenAnalysisT::MatMult_A_Shell(Mat A, Vec x, Vec y)
 {
-    //test as indentity matrix
-    /*int m, n;
-    MatGetSize(A, &m, &n);
-    
-    const PetscScalar *px;
-    PetscScalar       *py;
-    PetscErrorCode    ierr;
-    
-    ierr = VecGetArrayRead(x,&px);
-    ierr = VecGetArray(y,&py);
-    
-    int low, high;
-    VecGetOwnershipRange(x, &low, &high);
-    int local_length=high-low;
-    
-    for (int i=0;i<local_length;i++) py[i] = 1*px[i];
-    
-    ierr = VecRestoreArrayRead(x,&px);
-    ierr = VecRestoreArray(y,&py);*/
-    
     //Decompose Vector
     EigenAnalysisT* EA = NULL;
     MatShellGetContext(A, (void**)&EA);
@@ -730,8 +671,6 @@ void EigenAnalysisT::MatMult_A_Shell(Mat A, Vec x, Vec y)
     
     
     //VecView(y, PETSC_VIEWER_STDOUT_WORLD);
-
-    
 }
 
 void EigenAnalysisT::DecomposeVector(Vec V, int m, Vec *sub_V)
