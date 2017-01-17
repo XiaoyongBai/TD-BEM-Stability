@@ -268,6 +268,11 @@ void EigenAnalysisT::SetMatrixSystem_Ave(double *H, double a1, double a2)
     delete [] column_index;
     
     
+    //Transpose all the matrices
+    for (int i=0; i<fNumMatrix+1; i++) {
+        MatTranspose(fH_Ave[i], MAT_REUSE_MATRIX, fH_Ave+i);
+    }
+    
     MatDestroy(&H0);
     MatDestroy(&H0_Inv);
     MatDestroy(&H_temp_1);
@@ -359,8 +364,36 @@ void EigenAnalysisT::FormA_Ave()
     
     //Allocate A
     if (!fA_Ave) {
-        MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, NumARow, NumARow, PETSC_NULL, &fA_Ave);
+        //MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, NumARow, NumARow, PETSC_NULL, &fA_Ave);
+        MatCreate(PETSC_COMM_WORLD, &fA_Ave);
+        MatSetSizes(fA_Ave, PETSC_DECIDE, PETSC_DECIDE, NumARow, NumARow);
+        MatSetType(fA_Ave, MATMPIAIJ);
+        
+        //PreAllocate A
+        Vec v_test;
+        VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, NumARow, &v_test);
+        
+        int low, high;
+        VecGetOwnershipRange(v_test, &low, &high);
+        high=high-1;
+        
+        int d_nz, o_nz;
+        if (low<=fNumRow-1) {
+            if (high<=fNumRow-1) {
+                d_nz=high-low+1;
+            }else{
+                d_nz=fNumRow-low;
+            }
+        }else{
+            d_nz=0;
+        }
+        o_nz=fNumRow-d_nz;
+        
+        MatMPIAIJSetPreallocation(fA_Ave, d_nz, PETSC_NULL, o_nz, PETSC_NULL);
+        MatSetOption(fA_Ave, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+        //cout << "d_nz="<< d_nz << " o_nz="<<o_nz<<" A is created \n";
     }
+    
     MatZeroEntries(fA_Ave);
     MatAssemblyBegin(fA_Ave, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(fA_Ave, MAT_FINAL_ASSEMBLY);
@@ -372,7 +405,7 @@ void EigenAnalysisT::FormA_Ave()
     
     int* row=new int[numRow];
     int* column=new int[numColumn];
-    int* column_global=new int[numColumn];
+    int* row_global=new int[numRow];
     for (int i=fHFirst; i<=fHLast; i++) {
         row[i-fHFirst]=i;
     }
@@ -383,11 +416,11 @@ void EigenAnalysisT::FormA_Ave()
     for (int hi=0; hi<fNumMatrix+1; hi++) {
         MatGetValues(fH_Ave[hi], numRow, row, numColumn, column, vec);
         
-        for (int ci=0; ci<numColumn; ci++) {
-            column_global[ci]=ci+hi*numColumn;
+        for (int ri=0; ri<numRow; ri++) {
+            row_global[ri]=ri+hi*fNumRow+fHFirst;
         }
         
-        MatSetValues(fA_Ave, numRow, row, numColumn, column_global, vec, INSERT_VALUES);
+        MatSetValues(fA_Ave, numRow, row_global, numColumn, column, vec, INSERT_VALUES);
         MatAssemblyBegin(fA_Ave, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(fA_Ave, MAT_FINAL_ASSEMBLY);
     }
@@ -405,12 +438,12 @@ void EigenAnalysisT::FormA_Ave()
     if (fAFirst_ave <= fNumRow-1) {
         if (fALast_ave > fNumRow-1){
             for (int ri=fNumRow; ri<=fALast_ave; ri++) {
-                MatSetValue(fA_Ave, ri, ri-fNumRow, 1.0, INSERT_VALUES);
+                MatSetValue(fA_Ave, ri-fNumRow, ri, 1.0, INSERT_VALUES);
             }
         }
     }else{
         for (int ri=fAFirst_ave; ri<=fALast_ave; ri++) {
-            MatSetValue(fA_Ave, ri, ri-fNumRow, 1.0, INSERT_VALUES);
+            MatSetValue(fA_Ave, ri-fNumRow, ri, 1.0, INSERT_VALUES);
         }
     }
     
@@ -421,7 +454,7 @@ void EigenAnalysisT::FormA_Ave()
     
     delete [] column;
     delete [] row;
-    delete [] column_global;
+    delete [] row_global;
     delete [] vec;
 }
 
@@ -463,7 +496,34 @@ double EigenAnalysisT::LargestEigen_Direct(void)
 
 double EigenAnalysisT::LargestEigen_Ave()
 {
-    Mat A_shell;
+    FormA_Ave();
+    EPS eps_1; /* eigenproblem solver context */
+    EPSCreate(PETSC_COMM_WORLD,&eps_1);
+    
+    //Set operators. In this case, it is a standard eigenvalue problem */
+    EPSSetOperators(eps_1,fA_Ave,NULL);
+    EPSSetProblemType(eps_1,EPS_NHEP);
+    EPSSetFromOptions(eps_1);
+    EPSSetWhichEigenpairs(eps_1,EPS_LARGEST_MAGNITUDE);
+    
+    //Solve
+    EPSSolve(eps_1);
+    //EPSView(eps, PETSC_VIEWER_STDOUT_WORLD);
+    
+    int nconv_1;
+    double kr_1, ki_1; //real and imaginary part of the first eigenvalue
+    EPSGetConverged( eps_1, &nconv_1 ); //get the number of available eigenvalues
+    for (int j=0; j<1; j++) {
+        EPSGetEigenpair( eps_1, j, &kr_1, &ki_1, PETSC_NULL, PETSC_NULL );
+    }
+    
+    EPSDestroy(&eps_1);
+    
+    double lambda_1=sqrt(kr_1*kr_1+ki_1*ki_1);
+    cout << "lambda_transpose="<<lambda_1<<endl;
+    
+    
+    /*Mat A_shell;
     
     int NumARow=(fNumMatrix+1)*fNumRow;
     MatCreateShell(PETSC_COMM_WORLD, PETSC_DETERMINE,  PETSC_DETERMINE, NumARow, NumARow, this, &A_shell);
@@ -495,15 +555,126 @@ double EigenAnalysisT::LargestEigen_Ave()
     cout << "lambda="<<lambda<<endl;
     
     EPSDestroy(&eps);
-    MatDestroy(&A_shell);
+    MatDestroy(&A_shell);*/
     
-    return lambda;
+    return lambda_1;
 }
 
 
 void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
 {
     int m, n;
+     MatGetSize(A, &m, &n);
+     
+     if (m != n) {
+     throw "!!!!! EignAnalysisT::InverseMPI, the matrix must be squre";
+     }
+    
+    //collect a parallel matrix
+    //step 1: get range
+    int low, high;
+    MatGetOwnershipRange(A, &low, &high);
+    high=high-1;
+    
+    int size, rank;
+    MPI_Comm_size(PETSC_COMM_WORLD, &size);
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    
+    int* low_gather=new int[size];
+    int* high_gather=new int[size];
+    
+    MPI_Gather(&low, 1, MPI_INT, low_gather, 1, MPI_INT, 0, PETSC_COMM_WORLD);
+    MPI_Gather(&high, 1, MPI_INT, high_gather, 1, MPI_INT, 0, PETSC_COMM_WORLD);
+
+    //step2: prepare send buffer
+    int loc_num_row=high-low+1;
+    int loc_count=loc_num_row*n;
+    double* A_pointer_loc=new double[loc_count];
+    
+    int* row=new int[loc_num_row];
+    int* column=new int[n];
+    for (int i=low; i<=high; i++) {
+        row[i-low]=i;
+    }
+    for (int i=0; i<n; i++) {
+        column[i]=i;
+    }
+    
+    MatGetValues(A, loc_num_row, row, n, column, A_pointer_loc);
+    
+    //step 3: prepare receive buffer
+    double* A_gather_pointer=NULL;
+    if (rank==0) {
+        A_gather_pointer=new double[n*n];
+    }
+    
+    int* counts=new int[size];
+    int* disps=new int[size];
+    
+    for (int ri=0; ri<size; ri++) {
+        counts[ri]=(high_gather[ri]-low_gather[ri]+1)*n;
+    }
+    disps[0]=0;
+    for (int ri=1; ri<size; ri++) {
+        disps[ri]=disps[ri-1]+counts[ri-1];
+    }
+    
+    MPI_Gatherv(A_pointer_loc, loc_count, MPI_DOUBLE, A_gather_pointer, counts, disps, MPI_DOUBLE, 0, PETSC_COMM_WORLD);
+    
+    //step 4: do the inverse
+    int* index=new int[m];
+    for (int i=0; i<m; i++) {
+        index[i]=i;
+    }
+    
+    if (rank==0) {
+        
+        Mat A_seq;
+        MatCreateSeqDense(PETSC_COMM_SELF,m,m,PETSC_NULL, &A_seq);
+        MatSetValues(A_seq, m, index, m, index, A_gather_pointer, INSERT_VALUES);
+        MatAssemblyBegin(A_seq, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(A_seq, MAT_FINAL_ASSEMBLY);
+        
+        Mat A_inv_seq;
+        MatCreateSeqDense(PETSC_COMM_SELF,m,m,PETSC_NULL, &A_inv_seq);
+        
+        Mat I_Matrix;
+        MatCreateSeqDense(PETSC_COMM_SELF,m,m,PETSC_NULL, &I_Matrix);
+        MatZeroEntries(I_Matrix);
+        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
+        
+        MatShift(I_Matrix, 1.0);
+        MatAssemblyBegin(I_Matrix, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(I_Matrix, MAT_FINAL_ASSEMBLY);
+        
+        MatLUFactor(A_seq,0,0,0);
+        MatMatSolve(A_seq, I_Matrix, A_inv_seq);
+        
+        MatGetValues(A_inv_seq, m, index, m, index, A_gather_pointer);
+        MatSetValues(A_Inv, m, index, m, index, A_gather_pointer, INSERT_VALUES);
+        
+        
+        MatDestroy(&I_Matrix);
+        MatDestroy(&A_seq);
+        MatDestroy(&A_inv_seq);
+    }
+    
+    MatAssemblyBegin(A_Inv, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(A_Inv, MAT_FINAL_ASSEMBLY);
+    
+    
+    delete [] low_gather;
+    delete [] high_gather;
+    delete [] A_pointer_loc;
+    if (rank==0) delete [] A_gather_pointer;
+    delete [] row;
+    delete [] column;
+    delete [] counts;
+    delete [] disps;
+    delete [] index;
+    
+    /*int m, n;
     MatGetSize(A, &m, &n);
     
     if (m != n) {
@@ -554,7 +725,7 @@ void EigenAnalysisT::InverseMPI(Mat A, Mat& A_Inv)
     VecDestroy(&X);
     KSPDestroy(&ksp);
     
-    delete [] row_position;
+    delete [] row_position;*/
     
 }
 

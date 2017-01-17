@@ -18,7 +18,7 @@ int main( int argc, char **argv )
 {
     char help[] = "Eigenvalue analysis of BEM matrix, usingSLEPc\n";
     SlepcInitialize(&argc,&argv,(char*)0,help);
-    
+        
     int rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank );
     
@@ -48,21 +48,19 @@ int main( int argc, char **argv )
         EA.SetMatrixNumSize(num_matrix, num_row);
         
         std::time_t result;
-        /*double A1=0.25;
+        double A1=0.25;
         double A2=0.25;
         
-        std::time_t result = std::time(nullptr);
+        result = std::time(NULL);
         std::cout << std::asctime(std::localtime(&result)) <<endl;
         
         EA.SetMatrixSystem_Ave(H, A1, A2);
         
-        result = std::time(nullptr);
+        result = std::time(NULL);
         std::cout << std::asctime(std::localtime(&result)) <<endl;
         
         double bb=EA.LargestEigen_Ave();
-        cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;*/
-
-        result = std::time(NULL);
+        cout << "\n the largest eigenvalue of A for averaging stepping=" << bb <<endl;
     
         ofstream write_eig;
         
